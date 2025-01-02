@@ -33,6 +33,7 @@ POS_MAPPING = {
     'prepositions': {'in'},
     'conjunctions': {'cc', 'cs'},
     'others': {'uh', 'ex', 'to', 'wdt', 'bez', 'nil', 'od', 'rn', '*'} #unde apare doar tagul '*' singur? 
+    #categoriile prepositions si conjunctions nu sunt prea putin reprezentate in setul de date. Cum va fi atunci cand trebuie sa le inveti?
 }
 
 def read_contractions():
