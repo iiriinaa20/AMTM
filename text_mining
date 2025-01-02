@@ -32,7 +32,7 @@ POS_MAPPING = {
     'determiners': {'dt','dti' ,'dtx', 'dts', 'dt$', 'at', 'abn', 'abx', 'ap', 'ap$','abl'},
     'prepositions': {'in'},
     'conjunctions': {'cc', 'cs'},
-    'others': {'uh', 'ex', 'to', 'wdt', 'bez', 'nil', 'od', 'rn', '*'}
+    'others': {'uh', 'ex', 'to', 'wdt', 'bez', 'nil', 'od', 'rn', '*'} #unde apare doar tagul '*' singur? 
 }
 
 def read_contractions():
@@ -77,7 +77,9 @@ def map_pos(pos):
     for category, tags in POS_MAPPING.items():
         if pos in tags:
             return category
-    return 'others' 
+    #return 'others' 
+    #categoria others exista deja, sa vedem daca nu ai uitat vre-un tag
+    return 'new_category' 
 
 def process_words_with_contractions(words_list, pos_list, words_dict):
     if FLAG_IS_CONTRACTED:
