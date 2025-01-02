@@ -276,7 +276,10 @@ def test(pos_probabilities):
         file.write("\n")
         for metric, value in metrics.items():
             file.write(f"{metric}: {value}\n")
-    
+
+    # este distul de ciudat la rezultatele tale. Nici macar o zecimala schimbata intre BGP1 si BGP2 si rezultatele sunt foarte bune
+    # in setul de test chiar nu este nici un cuvant care sa nu apara in setul de train?
+
     ###BGP2
     predicted_tags = predict_pos(words_to_predict, pos_probabilities, method='bgp2')
     
