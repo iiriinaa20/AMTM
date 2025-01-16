@@ -3,23 +3,29 @@ from collections import defaultdict
 import contractions
 from nltk.corpus import stopwords
 
+WORDS_DICT = []
 
-TESTING_PATH = r"C:\Users\mihae\Desktop\MASTER\testing"
-DIRECTORY_PATH = r"C:\Users\mihae\Desktop\MASTER\training"
-#DIRECTORY_PATH = r"C:\Users\mihae\Desktop\MASTER\brown"
-#DIRECTORY_PATH = r"C:\Users\mihae\Desktop\MASTER\test"
-TRAIN_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\outttt2222.txt"
+TESTING_PATH = r"C:\Users\mihae\Desktop\Test"
+DIRECTORY_PATH = r"C:\Users\mihae\Desktop\Train"
+TRAIN_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\out_train.txt"
 TEST_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\out_test.txt"
-#OUTPUT_PATH_POS_PAIRS= r"C:\Users\mihae\Desktop\MASTER\PAAAAAA.txt"
 CONTRACTIONS_PATH = r"C:\Users\mihae\Desktop\MASTER\contractions.txt"
 BGP1_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\bgp1.txt"
+FNB_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\fnb.txt"
 BGP2_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\bgp2.txt"
+MFPOS_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\mfpos.txt"
+
 STOP_WORDS = set(stopwords.words('english'))
-NP_ARRAY = ['np', 'nps', 'np$', 'nps$']
 
 OLD_POS = ""
 FLAG_IS_CONTRACTED = False
 FLAG_IS_FIRST_WORD = True
+
+PUNCTUATION =  ['.',',','''"''',':',';','?','!','(',')','[',']','{','}','-','--']
+
+correct_bayes = []
+matrix = []
+p_word_pos = []
 
 POS_MAPPING = {
     'nouns': {'nn', 'nns', 'nps', 'np', 'nns$', 'nn$', 'nps$', 'np$','nna','nna$','nnc','nnc$','nr','nr$','nrs','nrs$','nnp','nnp$'},
@@ -60,10 +66,6 @@ def fix_pos(pos):
     pos = [p[:-3] if p.endswith(('-hl', '-tl', '-nc')) else p for p in pos]
     return pos
 
-def retrieve_contracted_pos():
-    global OLD_POS
-    return OLD_POS.split('+')
-
 def separate_words_pos(current_word):
     global OLD_POS
     words = current_word.split('/')
@@ -79,24 +81,7 @@ def map_pos(pos):
             return category
     return 'others' 
 
-def process_words_with_contractions(words_list, pos_list, words_dict):
-    if FLAG_IS_CONTRACTED:
-        expanded_words = contractions.fix(' '.join(words_list))
-        expanded_words = expanded_words.split()
-        for i in range(min(len(pos_list), len(expanded_words))):
-            if expanded_words[i] and expanded_words[i][0].isalpha():
-                    fix_pos(pos_list[i])
-                    word, pos = expanded_words[i], pos_list[i]
-                    words_dict[(word, pos)] += 1
-    else:
-                
-        for word in words_list:
-            if word and word[0].isalpha() and word.lower() not in STOP_WORDS:
-                words_dict[(word,pos_list[0])] += 1
-            elif word and word[0].isalpha() and word.lower() in STOP_WORDS and words_dict[(word,pos_list[0])] == 0:
-                words_dict[(word,pos_list[0])] += 1
-    
-def process_words_no_contractions(words_list, pos_list, words_dict):
+def process_words_no_contractions(words_list, pos_list, words_dict,is_Testing=False):
      global FLAG_IS_FIRST_WORD
      for word in words_list:
             if word.endswith(('.', '!', '?')):
@@ -104,16 +89,8 @@ def process_words_no_contractions(words_list, pos_list, words_dict):
             #mapped_pos = pos_list[0]
             mapped_pos = map_pos(pos_list[0])
             if word and word[0].isalpha() and word.lower() not in STOP_WORDS:
-                if FLAG_IS_FIRST_WORD:
-                    words_dict[(word,mapped_pos)] += 1
-                    FLAG_IS_FIRST_WORD = False
-                else:
                     words_dict[(word.lower(),mapped_pos)] += 1
-            if word and word[0].isalpha() and word.lower() in STOP_WORDS and words_dict[(word,mapped_pos)] == 0:
-                if FLAG_IS_FIRST_WORD:
-                    words_dict[(word,mapped_pos)] += 1
-                    FLAG_IS_FIRST_WORD = False
-                else:
+            if word and word[0].isalpha() and word.lower() in STOP_WORDS and words_dict[(word.lower(),mapped_pos)] == 0:
                     words_dict[(word.lower(),mapped_pos)] += 1
 
 def read_brown(directory_path):
@@ -127,6 +104,7 @@ def read_brown(directory_path):
                 for line in content:
                     words = line.split()
                     for current_word in words:
+                        current_word = current_word.lower()
                         words_list, pos_list = separate_words_pos(current_word)
                         process_words_no_contractions(words_list, pos_list, words_dict)
     return words_dict
@@ -170,10 +148,7 @@ def print_info(words_dict,IS_TESTING=False):
     print(f"***")
 
 
-#####most freq pos
-
-
-def bgp1(words_dict):
+def bgp_probablities(words_dict):
     pos_probabilities = defaultdict(dict)
     word_totals = defaultdict(int)
     
@@ -192,7 +167,7 @@ def bgp1(words_dict):
     
     return pos_probabilities
 
-def predict_pos(words, pos_probabilities, method='bgp1'):
+def predict_pos_bgp(words, pos_probabilities, method='bgp1'):
     predictions = []
     for word in words:
         if word in pos_probabilities:
@@ -206,65 +181,45 @@ def predict_pos(words, pos_probabilities, method='bgp1'):
     
     return predictions
 
-def calculate_metrics(predicted_tags, correct_pos):
-    true_positive = 0
-    false_positive = 0
-    false_negative = 0
-    true_negative = 0
+def most_freq_pos(words_dict):
+    frequency = defaultdict(int)
+    for _, pos in words_dict:
+        frequency[pos] += 1
+    most_frequent_pos = max(frequency, key=frequency.get)
+    return most_frequent_pos
 
-    all_tags = set(correct_pos + [pred for _, pred in predicted_tags])
+def predict_mfpos(words, most_frequent_pos):
+    return [(word, most_frequent_pos) for word in words]
 
-    for tag in all_tags:
-        for (word, predicted_pos), correct_pos_tag in zip(predicted_tags, correct_pos):
-            if predicted_pos == tag:
-                if correct_pos_tag == tag:
-                    true_positive += 1
-                else:
-                    false_positive += 1
-            elif correct_pos_tag == tag:
-                false_negative += 1
-            else:
-                true_negative += 1
+def calculate_metrics(predicted_tags, correct_tags):
+    true_positive = false_positive = false_negative = true_negative = 0
 
-    accuracy = (true_positive + true_negative) / (true_positive + true_negative + false_positive + false_negative)
+    for (_, predicted_pos), correct_pos in zip(predicted_tags, correct_tags):
+        if predicted_pos == correct_pos:
+            true_positive += 1
+        else:
+            false_positive += 1
+            false_negative += 1
+
+    total = true_positive + false_positive + false_negative
+    accuracy = true_positive / total if total > 0 else 0
     precision = true_positive / (true_positive + false_positive) if true_positive + false_positive > 0 else 0
     recall = true_positive / (true_positive + false_negative) if true_positive + false_negative > 0 else 0
-    true_negative_rate = true_negative / (true_negative + false_positive) if true_negative + false_positive > 0 else 0
     f_measure = (2 * precision * recall) / (precision + recall) if precision + recall > 0 else 0
 
     return {
         "accuracy": accuracy,
         "precision": precision,
         "recall": recall,
-        "true_negative_rate": true_negative_rate,
         "f_measure": f_measure
     }
 
-def train():
-    WORDS_DICT = read_brown(DIRECTORY_PATH)
-    print_info(WORDS_DICT)
-    pos_probabilities = bgp1(WORDS_DICT)
-    return pos_probabilities
 
-def test(pos_probabilities):
-    # test = "this Fulton then did crisp rferfe a"
-    # predicted_tags = predict_pos(test, pos_probabilities)
-    # for word, pos in predicted_tags:
-    #     print(f"{word}: {pos}")
-    words_to_predict = []
-    correct_pos = []
-    test_words = read_brown(TESTING_PATH)
-    print_info(test_words, IS_TESTING=True)
-    
-    for word,pos in test_words:
-        words_to_predict.append(word)
-        correct_pos.append(pos)
-    
-    ###BGP1
-    predicted_tags = predict_pos(words_to_predict, pos_probabilities)
-    
+def print_bgp1_output(correct_pos, words_to_predict):
+    pos_probabilities = bgp_probablities(WORDS_DICT)  
+    predicted_tags = predict_pos_bgp(words_to_predict, pos_probabilities)
     metrics = calculate_metrics(predicted_tags, correct_pos)
-    
+
     with open(BGP1_OUTPUT_PATH, "w") as file:
         file.write("Word         Predicted POS         Correct POS\n")
         file.write("-" * 30 + "\n")
@@ -273,22 +228,63 @@ def test(pos_probabilities):
         file.write("\n")
         for metric, value in metrics.items():
             file.write(f"{metric}: {value}\n")
-    
-    ###BGP2
-    predicted_tags = predict_pos(words_to_predict, pos_probabilities, method='bgp2')
-    
+
+def print_bgp2_output(correct_pos, words_to_predict):
+    pos_probabilities = bgp_probablities(WORDS_DICT)  
+    predicted_tags = predict_pos_bgp(words_to_predict, pos_probabilities, method='bgp2')
     metrics = calculate_metrics(predicted_tags, correct_pos)
-    
+
     with open(BGP2_OUTPUT_PATH, "w") as file:
         file.write("Word         Predicted POS         Correct POS\n")
         file.write("-" * 30 + "\n")
         for (word, predicted_pos), correct_pos_tag in zip(predicted_tags, correct_pos):
             file.write(f"{word}: {predicted_pos} - {correct_pos_tag}\n")
-        file.write("\n")    
+        file.write("\n")
         for metric, value in metrics.items():
             file.write(f"{metric}: {value}\n")
+
+def print_mfpos_output(correct_pos, words_to_predict):
+    most_frequent_pos = most_freq_pos(WORDS_DICT) 
+    predicted_tags = predict_mfpos(words_to_predict, most_frequent_pos)
+    metrics = calculate_metrics(predicted_tags, correct_pos)
+
+    with open(MFPOS_OUTPUT_PATH, "w") as file:
+        file.write("Word         Predicted POS         Correct POS\n")
+        file.write("-" * 30 + "\n")
+        for (word, predicted_pos), correct_pos_tag in zip(predicted_tags, correct_pos):
+            file.write(f"{word}: {predicted_pos} - {correct_pos_tag}\n")
+        file.write("\n")
+        for metric, value in metrics.items():
+            file.write(f"{metric}: {value}\n")
+
+         
+         
+         
+         
+         
+         
+         
+          
+def train():
+    global WORDS_DICT
+    WORDS_DICT = read_brown(DIRECTORY_PATH)
+    print_info(WORDS_DICT)
     
+def test():
+    words_to_predict = []
+    correct_pos = []
+    test_words = read_brown(TESTING_PATH)
+    print_info(test_words, IS_TESTING=True)
+
+    for word, pos in test_words:
+        words_to_predict.append(word)
+        correct_pos.append(pos)
+    
+    print_mfpos_output(correct_pos, words_to_predict)
+    print_bgp1_output(correct_pos, words_to_predict)
+    print_bgp2_output(correct_pos, words_to_predict)
+            
 if __name__ == "__main__":
-    pos_probabilities = train()
-    test(pos_probabilities)
+    train()
+    test()
     print("Done")

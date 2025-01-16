@@ -1,0 +1,185 @@
+import os
+from collections import defaultdict
+from nltk.corpus import stopwords
+
+WORDS_DICT = []
+TESTING_PATH = r"C:\Users\mihae\Desktop\Test"
+DIRECTORY_PATH = r"C:\Users\mihae\Desktop\Train"
+TRAIN_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\out_train.txt"
+TEST_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\out_test.txt"
+FNB_OUTPUT_PATH = r"C:\Users\mihae\Desktop\MASTER\fnb.txt"
+
+STOP_WORDS = set(stopwords.words('english'))
+PUNCTUATION = ['.', ',', '"', ':', ';', '?', '!', '(', ')', '[', ']', '{', '}', '-', '--']
+CPl = []
+
+POS_MAPPING = {
+    'nouns': {'nn', 'nns', 'nps', 'np', 'nns$', 'nn$', 'nps$', 'np$','nna','nna$','nnc','nnc$','nr','nr$','nrs','nrs$','nnp','nnp$'},
+    'verbs': {'vb','vba', 'vbd', 'vbg', 'vbn', 'vbp', 'vbz', 'hv', 'hvd', 'hvn', 'hvz', 'hvg', 'md','be','bed','bedz','beg','bem','ben','ber','bez',
+              'vb*', 'vbd*', 'vbg*', 'vbn*', 'vbp*', 'vbz*', 'hv*', 'hvd*', 'hvn*', 'hvz*', 'hvg*', 'md*','be*','bed*','bedz*','beg*','bem*','ben*','ber*','bez*',
+              'do','doz','dod','do*','doz*','dod*',},
+    'adjectives': {'jj', 'jj$', 'jjr', 'jjt','jja','jjc','jjcc','jjs','jjf','jjm'},
+    'adverbs': {'rb', 'rbr', 'rbt', 'ql', 'qlp', 'wrb', 'rb$'},
+    'pronouns': {'ppss', 'pps', 'pp$', 'ppl', 'ppo', 'ppls', 'wp$', 'wpo', 'wql'},
+    'determiners': {'dt','dti' ,'dtx', 'dts', 'dt$', 'at', 'abn', 'abx', 'ap', 'ap$','abl'},
+    'prepositions': {'in'},
+    'conjunctions': {'cc', 'cs'},
+    'others': {'uh', 'ex', 'to', 'wdt', 'bez', 'nil', 'od', 'rn', '*'}
+}
+
+DEFAULT_W_PROB = 0
+DEFAULT_P_COND_PROB = 0
+
+def fix_pos(pos):
+    if '+' in pos:
+        FLAG_IS_CONTRACTED = True
+        pos = [pos.split('+')[0]]
+    else:
+        FLAG_IS_CONTRACTED = False
+        pos = [pos]
+    
+    pos = [p[3:] if p.startswith('fw-') else p for p in pos]
+    pos = [p[:-3] if p.endswith(('-hl', '-tl', '-nc')) else p for p in pos]
+    pos = [p[:-3] if p.endswith(('-hl', '-tl', '-nc')) else p for p in pos]
+    return pos[0]
+
+
+def map_pos(pos):
+    for category, tags in POS_MAPPING.items():
+        if pos in tags:
+            return category
+    return 'others'
+
+# Training phase
+def train_naive_bayes_bigram(directory_path):
+    word_counts = defaultdict(lambda: defaultdict(int))
+    tag_totals = defaultdict(int)
+    bigram_counts = defaultdict(lambda: defaultdict(int))
+
+    for file_name in os.listdir(directory_path):
+        file_path = os.path.join(directory_path, file_name)
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as file:
+                for line in file:
+                    words = line.split()
+                    previous_tag = None
+                    for word_tag in words:
+                        if '/' in word_tag:
+                            word, pos = word_tag.rsplit('/', 1)
+                            pos = map_pos(fix_pos(pos))
+                            word = word.lower()
+                            if word[0].isalpha():
+                            # if word not in STOP_WORDS and word[0].isalpha():
+                                word_counts[pos][word] += 1
+                                tag_totals[pos] += 1
+                                if previous_tag is not None:
+                                    bigram_counts[previous_tag][pos] += 1
+                                previous_tag = pos
+
+    total_tags = sum(tag_totals.values())
+    priors = {tag: count / total_tags for tag, count in tag_totals.items()}
+    w={}
+    for tag, word_dict in word_counts.items():
+        w[tag] = {}
+        for word, count in word_dict.items():
+            w[tag][word] = count / tag_totals[tag]
+
+    p_cond = {}
+
+    for prev_tag, tag_counts in bigram_counts.items():
+        p_cond[prev_tag] = {}
+        total_count = sum(tag_counts.values())
+        for tag, count in tag_counts.items():
+            p_cond[prev_tag][tag] = count / total_count
+
+    return priors, w, p_cond
+
+def predict_naive_bayes_bigram(sentences, priors, w, p_cond):
+    predictions = []
+    
+    for sentence in sentences:
+        previous_tag = None
+        
+        for word_tag in sentence:
+            if '/' in word_tag:
+                word, correct_pos = word_tag.rsplit('/', 1)
+                word = word.lower()
+                
+                max_prob = -float('inf')
+                best_tag = 'others'
+
+                if word[0].isalpha():  
+                    CPl.append((word, map_pos(fix_pos(correct_pos))))
+
+                    for tag in priors.keys():
+                        prior = priors[tag]
+                        p1 = w[tag].get(word, DEFAULT_W_PROB)
+                        if previous_tag is not None:
+                            p2 = p_cond.get(previous_tag, {}).get(tag, DEFAULT_P_COND_PROB)
+                        else:
+                            p2 = 1 
+
+                        prob = p1 * p2
+
+                        if prob > max_prob:
+                            max_prob = prob
+                            best_tag = tag
+
+                    predictions.append((word, best_tag))
+                    previous_tag = best_tag
+
+    return predictions
+
+
+def extract_sentences(testing_path):
+    sentences = []
+    for file_name in os.listdir(testing_path):
+        file_path = os.path.join(testing_path, file_name)
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as file:
+                for line in file:
+                    sentence = [word.strip() for word in line.split() if word not in PUNCTUATION]
+                    if sentence:
+                        sentences.append(sentence)
+    return sentences
+
+def write_predictions_with_metrics(predictions, correct_tags, output_path):
+    true_positive = 0
+    false_positive = 0
+    false_negative = 0
+    total = len(correct_tags)
+
+    for (_, predicted_pos), (_, correct_pos) in zip(predictions, correct_tags):
+        if predicted_pos == correct_pos:
+            true_positive += 1
+        else:
+            false_positive += 1
+            false_negative += 1
+
+    accuracy = true_positive / total if total > 0 else 0
+    precision = true_positive / (true_positive + false_positive) if true_positive + false_positive > 0 else 0
+    recall = true_positive / (true_positive + false_negative) if true_positive + false_negative > 0 else 0
+    f_measure = (2 * precision * recall) / (precision + recall) if precision + recall > 0 else 0
+
+    with open(output_path, 'w') as file:
+        file.write("Word         Predicted POS         Correct POS\n")
+        file.write("-" * 30 + "\n")
+        for (word, predicted_pos), (_, correct_pos) in zip(predictions, correct_tags):
+            file.write(f"{word}: {predicted_pos} - {correct_pos}\n")
+        file.write("\n")
+        file.write(f"Accuracy: {accuracy:.4f}\n")
+        file.write(f"Precision: {precision:.4f}\n")
+        file.write(f"Recall: {recall:.4f}\n")
+        file.write(f"F-Measure: {f_measure:.4f}\n")
+
+if __name__ == "__main__":
+   
+    priors, w, p_cond = train_naive_bayes_bigram(DIRECTORY_PATH)
+
+    test_sentences = extract_sentences(TESTING_PATH)
+    predictions = predict_naive_bayes_bigram(test_sentences, priors, w, p_cond)
+
+    # correct_tags = [(word, map_pos(fix_pos(pos))) for sentence in test_sentences for word, pos in (word_tag.rsplit('/', 1) for word_tag in sentence if '/' in word_tag)]
+
+    write_predictions_with_metrics(predictions, CPl, FNB_OUTPUT_PATH)
+    print("done")
